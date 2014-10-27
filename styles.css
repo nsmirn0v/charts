@@ -1,0 +1,22 @@
+body {
+	color: #999;
+	font-family: monospace;
+	font-size: 10px;
+	text-align: center;
+}
+
+.axis line,
+.axis path {
+	fill: none;
+	stroke: #ddd;
+	shape-rendering: crispEdges;
+}
+
+.line {
+	fill: none;
+	stroke-width: 1;
+}
+
+.bar {
+	fill: dodgerblue;
+}
