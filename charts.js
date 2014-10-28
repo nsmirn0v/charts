@@ -7,7 +7,7 @@ var Chart = {};
 	var DEFAULTS = {
 		margin: { top: 20, bottom: 20, left: 30, right: 20 },
 		limit: 20,
-		color: 'dodgerblue',
+		// color: 'dodgerblue',
 		duration: 500
 	};
 
@@ -36,9 +36,9 @@ var Chart = {};
 		scope.height = (options.height || (clientRect.height || clientRect.width * 0.3)) -
 			scope.margin.top - scope.margin.bottom;
 
-		// chart settings
+		// Chart settings
 		scope.title = options.title;
-		scope.color = options.color || DEFAULTS.color;
+		// scope.color = options.color || DEFAULTS.color;
 		scope.limit = options.limit || DEFAULTS.limit;
 		scope.duration = options.duration || DEFAULTS.duration;
 
@@ -47,6 +47,9 @@ var Chart = {};
 		scope.y = options.y;
 
 		scope.data = options.data || [];
+
+		// Init color picker
+		scope.colors = d3.scale.category10();
 
 		return scope;
 	};
@@ -158,19 +161,6 @@ var Chart = {};
 			return scope;
 		},
 
-		/*
-		 * TODO: Reset comment
-		 */
-		reset: function () {
-			
-		},
-
-		/*
-		 * TODO: destroy comment
-		 */
-		destroy: function () {
-		},
-
 		/**************** Helpers ****************/
 		scale: function (options, x) {
 			var scope = this;
@@ -207,22 +197,46 @@ var Chart = {};
 
 		domain: function (options) {
 			var scope = this;
+			var keys = _.keys(scope.data);
 
-			if (!scope.data.length) {
+			var min,
+				max,
+				domain;
+
+			if (!keys.length) {
 				return options.type === 'time' ?
 					[new Date(), new Date()] : [0, 1];
-			} else if (scope.data.length === 1) {
-				return [scope.data[0][options.key], scope.data[0][options.key]];
 			}
 
 			if (options.type === 'time' || options.type === 'linear') {
-				return d3.extent(scope.data, function (d) {
-					return d[options.key];
+				_.each(keys, function (key) {
+					var extent = d3.extent(scope.data[key], function (d) {
+						return d[options.key];
+					});
+
+					if (typeof min == 'undefined') {
+						min = extent[0];
+						max = extent[1];
+					} else {
+						if (extent[0] < min) {
+							min = extent[0];
+						}
+
+						if (extent[1] > max) {
+							max = extent[1];
+						}
+					}
 				});
+
+				return [min, max];
 			} else if (options.type === 'ordinal') {
-				return scope.data.map(function (d) {
-					return d[options.key];
+				domain = [];
+
+				_.each(keys, function (key) {
+					domain = _.union(domain, scope.data[key]);
 				});
+
+				return domain;
 			} else {
 				throw Error('Invalid axis type', options.type);
 			}
@@ -234,9 +248,14 @@ var Chart = {};
 	};
 
 	_.extend(Line.prototype, AxisChart.prototype, {
-
+		/*
+		 * TODO comment
+		 */
 		render: function () {
 			var scope = this;
+
+			var keys = _.keys(scope.data);
+			var values = _.values(scope.data);
 
 			AxisChart.prototype.render.apply(scope, arguments);
 
@@ -244,7 +263,49 @@ var Chart = {};
 				.x(function (d) { return scope.xScale(d[scope.x.key]); })
 				.y(function (d) { return scope.yScale(d[scope.y.key]); });
 
-			scope.path = scope.canvas
+
+			var clip = scope.canvas
+				.append('g')
+				.attr('clip-path', 'url(#clip)');
+
+			scope.paths = clip
+				.selectAll('.line')
+				.data(values);
+
+			// update
+
+			// enter
+			scope.paths
+				.enter()
+				.append('path')
+				.classed('line', true)
+				.attr('id', function (d, i) {
+					return keys[i];
+				})
+				.style('stroke-opacity', 0)
+				.style('stroke', function (d, i) {
+					return scope.colors(i);
+				})
+				.attr('d', function (d) {
+					var data = d.map(function (point) {
+						var obj = {};
+						obj[scope.x.key] = point[scope.x.key];
+						obj[scope.y.key] = 0;
+						return obj;
+					});
+
+					return scope.line(data);
+				})
+				.transition()
+				.duration(scope.duration)
+					.attr('d', scope.line)
+					.style('stroke-opacity', 1);
+
+
+
+			// exit
+
+			/*scope.path = scope.canvas
 				.append('g')
 				.attr('clip-path', 'url(#clip)')
 					.append('path')
@@ -256,15 +317,15 @@ var Chart = {};
 						obj[scope.x.key] = d[scope.x.key];
 						obj[scope.y.key] = 0;
 
-					return obj;
-				})));
+						return obj;
+					})));
 
 			scope.path
 				.datum(scope.data)
 				.transition()
 				.duration(500)
 					.attr('d', scope.line)
-					.style('stroke-opacity', 1);
+					.style('stroke-opacity', 1);*/
 
 			return scope;
 		},
@@ -274,6 +335,7 @@ var Chart = {};
 		 */
 		update: function (data) {
 			var scope = this;
+			var keys = _.keys(data);
 			
 			var length,
 				slide,
@@ -281,76 +343,146 @@ var Chart = {};
 				copy,
 				dx;
 
-			// If no data or empty array do nothing
-			if (!data || (_.isArray(data) && !data.length)) {
+			/*scope.paths
+				.data(_.values(scope.data))
+				.attr('d', function (d) {
+					return scope.line(d);
+				});*/
+
+			// If no data do nothing
+			if (!data) {
 				return;
 			}
 
+			slide = false;
+			_.each(keys, function (key) {
+
+
+				var l = scope.data[key].length +
+					(_.isArray(data[key]) ? data[key].length : 1);
+
+				if (l > scope.limit) {
+					slide = true;
+				}
+			});
+
 			// Caluclate length of new data
-			length = data.length || 1;
+			// length = data.length || 1;
 
 			// Translate path to the left if length of
 			// data greater than limit
-			slide = scope.data.length + length > scope.limit;
+			// slide = scope.data.length + length > scope.limit;
 
 			// Update chart
 			if (slide) {
 				// Limit is reached
 				// Slide chart to the left
-				copy = [];
-				_.each(scope.data, function (d, i) {
-					copy.push(_.clone(d));
+				copy = {};
+				_.each(_.keys(scope.data), function (key) {
+					var l,
+						newData;
+
+					copy[key] = [];
+
+					// Clone data
+					_.each(scope.data[key], function (point) {
+						copy[key].push(_.clone(point));
+					});
+
+					// Merge new data
+					newData = data[key];
+
+					if (_.isArray(newData)) {
+						_.each(newData, function (point) {
+							copy[key].push(point);
+							scope.data[key].push(point);
+						});
+					} else {
+						copy[key].push(newData);
+						scope.data[key].push(newData);
+					}
 				});
 
-				if (data.length) {
-					_.each(data, function (d) {
-						copy.push(d);
-						scope.data.push(d);
-					});
-				} else {
-					copy.push(data);
-					scope.data.push(data);
-				}
-
 				// Remove extra points
-				scope.data.splice(0, length);
+				var last;
+				var first;
+				var chartId;
+
+				_.each(scope.data, function (d, id) {
+					var l = d.length - scope.limit;
+					var point;
+					
+					if (l > 0) {
+						d.splice(0, l);
+					}
+
+					point = _.last(d);
+
+					if (!last) {
+						last = point;
+						chartId = id
+					} else if (point[scope.x.key] > last[scope.x.key]) {
+						last = point;
+						chartId = id;
+					}
+				});
+
+				first = scope.data[chartId][0];
+
+				_.each(scope.data, function (d, id) {
+					var done;
+
+					if (id !== chartId) {
+						while(!done) {
+							if (d[0][scope.x.key] < first[scope.x.key]) {
+								d.shift();
+							} else {
+								done = true;
+							}
+						}
+					}
+				});
 
 				// Render path
-				scope.path
-					.attr('d', scope.line(copy));
+				scope.paths
+					.data(_.values(copy))
+					.attr('d', function (d) {
+						return scope.line(d);
+					});
 
 				// Update scales/axes
 				AxisChart.prototype.update.apply(scope, arguments);
 
-				// Calculate dx - distance to which
-				// path will be translated to the left
-				point = copy[length];
-				dx = scope.xScale(point[scope.x.key]);
-
 				// Update path according to new
 				// scales and axes
-				scope.path
+				scope.paths
+					.data(_.values(copy))
 					.transition()
 					.duration(scope.duration)
-						.attr('transform', 'translate(' + [dx, 0] + ')')
-						.attr('d', scope.line(copy));
+						.attr('d', function (d) {
+							return scope.line(d);
+						});
 			} else {
 				// Limit is not reached
 				// Add new points;
-				if (data.length) {
-					_.each(data, function (d) {
-						scope.data.push(d);
+				_.each(keys, function (key) {
+					_.each(data[key], function (d) {
+						if (_.isArray(d)) {
+							_.each(d, function (point) {
+								scope.data[key].push(point);
+							});
+						} else {
+							scope.data[key].push(d);
+						}
 					});
-				} else {
-					scope.data.push(data);
-				}
+				});
 
-				scope.path
+				scope.paths
 					.attr('d', scope.line);
 
 				AxisChart.prototype.update.apply(this, arguments);
 
-				scope.path
+				scope.paths
 					.transition()
 					.duration(scope.duration)
 						.attr('d', scope.line);
@@ -358,7 +490,6 @@ var Chart = {};
 
 			return scope;
 		}
-
 	});
 
 	Chart.Line = Line;

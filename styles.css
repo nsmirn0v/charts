@@ -5,6 +5,11 @@ body {
 	text-align: center;
 }
 
+svg {
+	display: block;
+	margin: 20px auto;
+}
+
 .axis line,
 .axis path {
 	fill: none;
