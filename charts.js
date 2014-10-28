@@ -253,9 +253,7 @@ var Chart = {};
 		 */
 		render: function () {
 			var scope = this;
-
 			var keys = _.keys(scope.data);
-			var values = _.values(scope.data);
 
 			AxisChart.prototype.render.apply(scope, arguments);
 
@@ -264,15 +262,13 @@ var Chart = {};
 				.y(function (d) { return scope.yScale(d[scope.y.key]); });
 
 
-			var clip = scope.canvas
+			scope.clip = scope.canvas
 				.append('g')
-				.attr('clip-path', 'url(#clip)');
+				.attr('clip-path', 'url(#cli)');
 
-			scope.paths = clip
+			scope.paths = scope.clip
 				.selectAll('.line')
-				.data(values);
-
-			// update
+				.data(_.values(scope.data));
 
 			// enter
 			scope.paths
@@ -284,7 +280,7 @@ var Chart = {};
 				})
 				.style('stroke-opacity', 0)
 				.style('stroke', function (d, i) {
-					return scope.colors(i);
+					return scope.colors(keys[i]);
 				})
 				.attr('d', function (d) {
 					var data = d.map(function (point) {
@@ -300,32 +296,6 @@ var Chart = {};
 				.duration(scope.duration)
 					.attr('d', scope.line)
 					.style('stroke-opacity', 1);
-
-
-
-			// exit
-
-			/*scope.path = scope.canvas
-				.append('g')
-				.attr('clip-path', 'url(#clip)')
-					.append('path')
-					.classed('line', true)
-					.style('stroke-opacity', 0)
-					.style('stroke', scope.color)
-					.attr('d', scope.line(scope.data.map(function (d) {
-						var obj = {};
-						obj[scope.x.key] = d[scope.x.key];
-						obj[scope.y.key] = 0;
-
-						return obj;
-					})));
-
-			scope.path
-				.datum(scope.data)
-				.transition()
-				.duration(500)
-					.attr('d', scope.line)
-					.style('stroke-opacity', 1);*/
 
 			return scope;
 		},
@@ -343,12 +313,6 @@ var Chart = {};
 				copy,
 				dx;
 
-			/*scope.paths
-				.data(_.values(scope.data))
-				.attr('d', function (d) {
-					return scope.line(d);
-				});*/
-
 			// If no data do nothing
 			if (!data) {
 				return;
@@ -356,22 +320,17 @@ var Chart = {};
 
 			slide = false;
 			_.each(keys, function (key) {
+				var l;
 
+				if (scope.data[key]) {
+					l = scope.data[key].length +
+						(_.isArray(data[key]) ? data[key].length : 1);
 
-				var l = scope.data[key].length +
-					(_.isArray(data[key]) ? data[key].length : 1);
-
-				if (l > scope.limit) {
-					slide = true;
+					if (l > scope.limit) {
+						slide = true;
+					}
 				}
 			});
-
-			// Caluclate length of new data
-			// length = data.length || 1;
-
-			// Translate path to the left if length of
-			// data greater than limit
-			// slide = scope.data.length + length > scope.limit;
 
 			// Update chart
 			if (slide) {
@@ -472,7 +431,9 @@ var Chart = {};
 								scope.data[key].push(point);
 							});
 						} else {
-							scope.data[key].push(d);
+							if (scope.data[key]) {
+								scope.data[key].push(d);
+							}
 						}
 					});
 				});
@@ -487,6 +448,65 @@ var Chart = {};
 					.duration(scope.duration)
 						.attr('d', scope.line);
 			}
+
+			return scope;
+		},
+
+		/*
+		 * Todo comment
+		 */
+		addChart: function (data) {
+			var scope = this;
+			var keys;
+
+			_.each(data, function (d, id) {
+				scope.data[id] = d;
+			});
+
+			keys = _.keys(scope.data);
+
+			// Update scales/axes
+			AxisChart.prototype.update.apply(this, arguments);
+
+			// bind updated data
+			scope.paths = scope.clip
+				.selectAll('.line')
+				.data(_.values(scope.data));
+
+			// update
+			scope.paths
+				.transition()
+				.duration(scope.duration)
+					.attr('d', function (d) {
+						return scope.line(d);
+					});
+
+			// enter
+			scope.paths
+				.enter()
+				.append('path')
+				.classed('line', true)
+				.attr('id', function (d, i) {
+					return keys[i];
+				})
+				.style('stroke-opacity', 0)
+				.style('stroke', function (d, i) {
+					return scope.colors(keys[i]);
+				})
+				.attr('d', function (d) {
+					var data = d.map(function (point) {
+						var obj = {};
+						obj[scope.x.key] = point[scope.x.key];
+						obj[scope.y.key] = 0;
+						return obj;
+					});
+
+					return scope.line(data);
+				})
+				.transition()
+				.duration(scope.duration)
+					.attr('d', scope.line)
+					.style('stroke-opacity', 1);
 
 			return scope;
 		}
