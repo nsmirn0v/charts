@@ -197,20 +197,20 @@ var Chart = {};
 
 		domain: function (options) {
 			var scope = this;
-			var keys = _.keys(scope.data);
+			// var keys = _.keys(scope.data);
 
 			var min,
 				max,
 				domain;
 
-			if (!keys.length) {
+			if (!scope.data.length) {
 				return options.type === 'time' ?
 					[new Date(), new Date()] : [0, 1];
 			}
 
 			if (options.type === 'time' || options.type === 'linear') {
-				_.each(keys, function (key) {
-					var extent = d3.extent(scope.data[key], function (d) {
+				_.each(scope.data, function (chart) {
+					var extent = d3.extent(chart.data, function (d) {
 						return d[options.key];
 					});
 
@@ -229,14 +229,6 @@ var Chart = {};
 				});
 
 				return [min, max];
-			} else if (options.type === 'ordinal') {
-				domain = [];
-
-				_.each(keys, function (key) {
-					domain = _.union(domain, scope.data[key]);
-				});
-
-				return domain;
 			} else {
 				throw Error('Invalid axis type', options.type);
 			}
@@ -253,7 +245,6 @@ var Chart = {};
 		 */
 		render: function () {
 			var scope = this;
-			var keys = _.keys(scope.data);
 
 			AxisChart.prototype.render.apply(scope, arguments);
 
@@ -261,29 +252,30 @@ var Chart = {};
 				.x(function (d) { return scope.xScale(d[scope.x.key]); })
 				.y(function (d) { return scope.yScale(d[scope.y.key]); });
 
-
 			scope.clip = scope.canvas
 				.append('g')
-				.attr('clip-path', 'url(#cli)');
+				.attr('clip-path', 'url(#clip)');
 
 			scope.paths = scope.clip
 				.selectAll('.line')
-				.data(_.values(scope.data));
+				.data(scope.data, function (d) {
+					return d.id;
+				});
 
 			// enter
 			scope.paths
 				.enter()
 				.append('path')
 				.classed('line', true)
-				.attr('id', function (d, i) {
-					return keys[i];
+				.attr('id', function (chart) {
+					return chart.id;
 				})
 				.style('stroke-opacity', 0)
-				.style('stroke', function (d, i) {
-					return scope.colors(keys[i]);
+				.style('stroke', function (chart) {
+					return scope.colors(chart.id);
 				})
-				.attr('d', function (d) {
-					var data = d.map(function (point) {
+				.attr('d', function (chart) {
+					var data = chart.data.map(function (point) {
 						var obj = {};
 						obj[scope.x.key] = point[scope.x.key];
 						obj[scope.y.key] = 0;
@@ -294,7 +286,9 @@ var Chart = {};
 				})
 				.transition()
 				.duration(scope.duration)
-					.attr('d', scope.line)
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
+					})
 					.style('stroke-opacity', 1);
 
 			return scope;
@@ -303,32 +297,32 @@ var Chart = {};
 		/*
 		 * Todo: comment
 		 */
-		update: function (data) {
+		update: function (newData) {
 			var scope = this;
-			var keys = _.keys(data);
 			
-			var length,
-				slide,
-				point,
+			var slide,
 				copy,
-				dx;
+				last,
+				first;
 
 			// If no data do nothing
-			if (!data) {
+			if (!newData ||
+				(_.isArray(newData) && !newData.length)) {
 				return;
 			}
 
-			slide = false;
-			_.each(keys, function (key) {
-				var l;
+			if (!newData.length) {
+				newData = [newData]
+			}
 
-				if (scope.data[key]) {
-					l = scope.data[key].length +
-						(_.isArray(data[key]) ? data[key].length : 1);
+			_.each(newData, function (chart) {
+				var oldChart = _.findWhere(scope.data, {
+					id: chart.id
+				});
 
-					if (l > scope.limit) {
-						slide = true;
-					}
+				if (oldChart) {
+					slide = (oldChart.data.length +
+						chart.data.length) > scope.limit;
 				}
 			});
 
@@ -336,77 +330,73 @@ var Chart = {};
 			if (slide) {
 				// Limit is reached
 				// Slide chart to the left
-				copy = {};
-				_.each(_.keys(scope.data), function (key) {
-					var l,
-						newData;
+				copy = [];
 
-					copy[key] = [];
+				_.each(scope.data, function (chart) {
+					var chartClone = {
+						id: chart.id,
+						data: []
+					};
 
-					// Clone data
-					_.each(scope.data[key], function (point) {
-						copy[key].push(_.clone(point));
+					var chartToMerge = _.findWhere(newData, {
+						id: chart.id
 					});
 
-					// Merge new data
-					newData = data[key];
+					// Create deep copy of chart.data
+					_.each(chart.data, function (point) {
+						chartClone.data.push(_.clone(point));
+					});
 
-					if (_.isArray(newData)) {
-						_.each(newData, function (point) {
-							copy[key].push(point);
-							scope.data[key].push(point);
+					// Merge old and new data
+					if (chartToMerge && chartToMerge.data.length) {
+						_.each(chartToMerge.data, function (point) {
+							chartClone.data.push(point);
+							chart.data.push(point);
 						});
-					} else {
-						copy[key].push(newData);
-						scope.data[key].push(newData);
 					}
+
+					copy.push(chartClone);
 				});
 
 				// Remove extra points
-				var last;
-				var first;
-				var chartId;
-
-				_.each(scope.data, function (d, id) {
-					var l = d.length - scope.limit;
+				_.each(scope.data, function (chart) {
+					var length = chart.data.length - scope.limit;
 					var point;
 					
-					if (l > 0) {
-						d.splice(0, l);
+					if (length > 0) {
+						chart.data.splice(0, length);
 					}
 
-					point = _.last(d);
+					point = _.last(chart.data);
 
 					if (!last) {
 						last = point;
-						chartId = id
+						first = _.first(chart.data);
 					} else if (point[scope.x.key] > last[scope.x.key]) {
 						last = point;
-						chartId = id;
+						first = _.first(chart.data);
 					}
 				});
 
-				first = scope.data[chartId][0];
-
-				_.each(scope.data, function (d, id) {
+				_.each(scope.data, function (chart) {
 					var done;
-
-					if (id !== chartId) {
-						while(!done) {
-							if (d[0][scope.x.key] < first[scope.x.key]) {
-								d.shift();
-							} else {
-								done = true;
-							}
+					
+					while(!done && chart.data.length) {
+						if (chart.data[0][scope.x.key] < first[scope.x.key]) {
+							chart.data.shift();
+						} else {
+							done = true;
 						}
 					}
 				});
 
-				// Render path
+				// Render paths
 				scope.paths
-					.data(_.values(copy))
-					.attr('d', function (d) {
-						return scope.line(d);
+					.data(copy, function (chart) {
+						return chart.id;
+					})
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
 					});
 
 				// Update scales/axes
@@ -415,38 +405,43 @@ var Chart = {};
 				// Update path according to new
 				// scales and axes
 				scope.paths
-					.data(_.values(copy))
 					.transition()
 					.duration(scope.duration)
-						.attr('d', function (d) {
-							return scope.line(d);
+						.attr('d', function (chart) {
+							return scope.line(chart.data);
 						});
 			} else {
 				// Limit is not reached
 				// Add new points;
-				_.each(keys, function (key) {
-					_.each(data[key], function (d) {
-						if (_.isArray(d)) {
-							_.each(d, function (point) {
-								scope.data[key].push(point);
-							});
-						} else {
-							if (scope.data[key]) {
-								scope.data[key].push(d);
-							}
-						}
+				_.each(scope.data, function (chart) {
+					var chartToMerge = _.findWhere(newData, {
+						id: chart.id
 					});
+
+					// Merge old and new data
+					if (chartToMerge && chartToMerge.data.length) {
+						_.each(chartToMerge.data, function (point) {
+							chart.data.push(point);
+						});
+					}
 				});
 
+				// Render paths
 				scope.paths
-					.attr('d', scope.line);
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
+					});
 
+				// Update scales/axes
 				AxisChart.prototype.update.apply(this, arguments);
 
+				// Update paths
 				scope.paths
 					.transition()
 					.duration(scope.duration)
-						.attr('d', scope.line);
+						.attr('d', function (chart) {
+							return scope.line(chart.data);
+						});
 			}
 
 			return scope;
@@ -455,15 +450,23 @@ var Chart = {};
 		/*
 		 * Todo comment
 		 */
-		addChart: function (data) {
+		add: function (data) {
 			var scope = this;
-			var keys;
 
-			_.each(data, function (d, id) {
-				scope.data[id] = d;
+			// Do nothing if no data
+			if (!data ||
+				(_.isArray(data) && !data.length)) {
+				return;
+			}
+
+			if (!data.length) {
+				data = [data];
+			}
+
+			// Merge old and new data
+			_.each(data, function (chart) {
+				scope.data.push(chart);
 			});
-
-			keys = _.keys(scope.data);
 
 			// Update scales/axes
 			AxisChart.prototype.update.apply(this, arguments);
@@ -471,14 +474,16 @@ var Chart = {};
 			// bind updated data
 			scope.paths = scope.clip
 				.selectAll('.line')
-				.data(_.values(scope.data));
+				.data(scope.data, function (chart) {
+					return chart.id;
+				});
 
 			// update
 			scope.paths
 				.transition()
 				.duration(scope.duration)
-					.attr('d', function (d) {
-						return scope.line(d);
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
 					});
 
 			// enter
@@ -486,15 +491,15 @@ var Chart = {};
 				.enter()
 				.append('path')
 				.classed('line', true)
-				.attr('id', function (d, i) {
-					return keys[i];
+				.attr('id', function (chart) {
+					return chart.id;
 				})
 				.style('stroke-opacity', 0)
-				.style('stroke', function (d, i) {
-					return scope.colors(keys[i]);
+				.style('stroke', function (chart) {
+					return scope.colors(chart.id);
 				})
-				.attr('d', function (d) {
-					var data = d.map(function (point) {
+				.attr('d', function (chart) {
+					var data = chart.data.map(function (point) {
 						var obj = {};
 						obj[scope.x.key] = point[scope.x.key];
 						obj[scope.y.key] = 0;
@@ -505,10 +510,70 @@ var Chart = {};
 				})
 				.transition()
 				.duration(scope.duration)
-					.attr('d', scope.line)
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
+					})
 					.style('stroke-opacity', 1);
 
 			return scope;
+		},
+
+		/*
+		 * TODO comment
+		 */
+		remove: function (ids) {
+			var scope = this;
+
+			if (!ids ||
+				(_.isArray(ids) && !ids.length)) {
+				return;
+			}
+
+			if (!_.isArray(ids)) {
+				ids = [ids];
+			}
+
+			// Remove data for specified ids
+			scope.data = _.reject(scope.data, function (chart) {
+				return ids.indexOf(chart.id) >= 0;
+			});
+
+			// Update scales/axis
+			AxisChart.prototype.update.apply(scope, arguments);
+
+			// Upate charts
+			scope.paths = scope.clip
+				.selectAll('.line')
+				.data(scope.data, function (chart) {
+					return chart.id;
+				});
+
+			// update
+			scope.paths
+				.transition()
+				.duration(scope.duration)
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
+					});
+
+			// update
+			scope.paths
+				.exit()
+				.transition()
+				.duration(scope.duration)
+					.style('stroke-opacity', 0)
+					.attr('d', function (chart) {
+						var data = chart.data.map(function (point) {
+							var obj = {};
+							obj[scope.x.key] = point[scope.x.key];
+							obj[scope.y.key] = 0;
+
+							return obj;
+						});
+
+						return scope.line(data);
+					})
+					.remove();
 		}
 	});
 
