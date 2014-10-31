@@ -6,8 +6,6 @@ var Chart = {};
 (function (Chart) {
 	var DEFAULTS = {
 		margin: { top: 20, bottom: 20, left: 30, right: 20 },
-		limit: 20,
-		// color: 'dodgerblue',
 		duration: 500
 	};
 
@@ -26,6 +24,8 @@ var Chart = {};
 		scope.container = options.container || d3.select('body');
 		clientRect = scope.container.node().getBoundingClientRect();
 
+		scope.contWidth = clientRect.width;
+
 		// Chart margin
 		scope.margin = options.margin || DEFAULTS.margin;
 
@@ -33,13 +33,11 @@ var Chart = {};
 		scope.width = (options.width || clientRect.width) -
 			scope.margin.left - scope.margin.right;
 
-		scope.height = (options.height || (clientRect.height || clientRect.width * 0.3)) -
+		scope.height = (options.height || (clientRect.width * 0.2)) -
 			scope.margin.top - scope.margin.bottom;
 
 		// Chart settings
 		scope.title = options.title;
-		// scope.color = options.color || DEFAULTS.color;
-		scope.limit = options.limit || DEFAULTS.limit;
 		scope.duration = options.duration || DEFAULTS.duration;
 
 		// x, y options
@@ -161,10 +159,28 @@ var Chart = {};
 			return scope;
 		},
 
-		/**************** Helpers ****************/
+		resize: function () {
+			var scope = this;
+
+			scope.width = scope.contWidth -
+				scope.margin.left - scope.margin.right;
+
+			scope.xScale
+				.range([0, scope.width]);
+
+			scope.gxAxis
+				.attr('transform', 'translate(' + [0, scope.height] + ')')
+				.call(scope.xAxis);
+
+			return scope;
+		},
+
+		/*
+		 * TODO comment
+		 */
 		scale: function (options, x) {
 			var scope = this;
-			var range = x ? [0, scope.width] : [scope.height, 0];
+			var range = x ? [0, scope.width] : [scope.height - 1, 0];
 			
 			var scale;
 
@@ -195,6 +211,9 @@ var Chart = {};
 			return scale;
 		},
 
+		/*
+		 * TODO comment
+		 */
 		domain: function (options) {
 			var scope = this;
 			// var keys = _.keys(scope.data);
@@ -227,6 +246,10 @@ var Chart = {};
 						}
 					}
 				});
+
+				if (options == scope.y) {
+					max += max * 0.1;
+				}
 
 				return [min, max];
 			} else {
@@ -272,7 +295,7 @@ var Chart = {};
 				})
 				.style('stroke-opacity', 0)
 				.style('stroke', function (chart) {
-					return scope.colors(chart.id);
+					return chart.color || scope.colors(chart.id);
 				})
 				.attr('d', function (chart) {
 					var data = chart.data.map(function (point) {
@@ -291,6 +314,9 @@ var Chart = {};
 					})
 					.style('stroke-opacity', 1);
 
+			// subscribe to resize
+			scope.resize();
+
 			return scope;
 		},
 
@@ -300,10 +326,8 @@ var Chart = {};
 		update: function (newData) {
 			var scope = this;
 			
-			var slide,
-				copy,
-				last,
-				first;
+			var copy,
+				makeCopy;
 
 			// If no data do nothing
 			if (!newData ||
@@ -312,137 +336,31 @@ var Chart = {};
 			}
 
 			if (!newData.length) {
-				newData = [newData]
+				newData = [newData];
 			}
 
-			_.each(newData, function (chart) {
-				var oldChart = _.findWhere(scope.data, {
-					id: chart.id
+			copy = this.formatData(newData);
+
+			// Render paths
+			scope.paths
+				.data(copy, function (chart) {
+					return chart.id;
+				})
+				.attr('d', function (chart) {
+					return scope.line(chart.data);
 				});
 
-				if (oldChart) {
-					slide = (oldChart.data.length +
-						chart.data.length) > scope.limit;
-				}
-			});
+			// Update scales/axes
+			AxisChart.prototype.update.apply(scope, arguments);
 
-			// Update chart
-			if (slide) {
-				// Limit is reached
-				// Slide chart to the left
-				copy = [];
-
-				_.each(scope.data, function (chart) {
-					var chartClone = {
-						id: chart.id,
-						data: []
-					};
-
-					var chartToMerge = _.findWhere(newData, {
-						id: chart.id
-					});
-
-					// Create deep copy of chart.data
-					_.each(chart.data, function (point) {
-						chartClone.data.push(_.clone(point));
-					});
-
-					// Merge old and new data
-					if (chartToMerge && chartToMerge.data.length) {
-						_.each(chartToMerge.data, function (point) {
-							chartClone.data.push(point);
-							chart.data.push(point);
-						});
-					}
-
-					copy.push(chartClone);
-				});
-
-				// Remove extra points
-				_.each(scope.data, function (chart) {
-					var length = chart.data.length - scope.limit;
-					var point;
-					
-					if (length > 0) {
-						chart.data.splice(0, length);
-					}
-
-					point = _.last(chart.data);
-
-					if (!last) {
-						last = point;
-						first = _.first(chart.data);
-					} else if (point[scope.x.key] > last[scope.x.key]) {
-						last = point;
-						first = _.first(chart.data);
-					}
-				});
-
-				_.each(scope.data, function (chart) {
-					var done;
-					
-					while(!done && chart.data.length) {
-						if (chart.data[0][scope.x.key] < first[scope.x.key]) {
-							chart.data.shift();
-						} else {
-							done = true;
-						}
-					}
-				});
-
-				// Render paths
-				scope.paths
-					.data(copy, function (chart) {
-						return chart.id;
-					})
+			// Update path according to new
+			// scales and axes
+			scope.paths
+				.transition()
+				.duration(scope.duration)
 					.attr('d', function (chart) {
 						return scope.line(chart.data);
 					});
-
-				// Update scales/axes
-				AxisChart.prototype.update.apply(scope, arguments);
-
-				// Update path according to new
-				// scales and axes
-				scope.paths
-					.transition()
-					.duration(scope.duration)
-						.attr('d', function (chart) {
-							return scope.line(chart.data);
-						});
-			} else {
-				// Limit is not reached
-				// Add new points;
-				_.each(scope.data, function (chart) {
-					var chartToMerge = _.findWhere(newData, {
-						id: chart.id
-					});
-
-					// Merge old and new data
-					if (chartToMerge && chartToMerge.data.length) {
-						_.each(chartToMerge.data, function (point) {
-							chart.data.push(point);
-						});
-					}
-				});
-
-				// Render paths
-				scope.paths
-					.attr('d', function (chart) {
-						return scope.line(chart.data);
-					});
-
-				// Update scales/axes
-				AxisChart.prototype.update.apply(this, arguments);
-
-				// Update paths
-				scope.paths
-					.transition()
-					.duration(scope.duration)
-						.attr('d', function (chart) {
-							return scope.line(chart.data);
-						});
-			}
 
 			return scope;
 		},
@@ -465,11 +383,21 @@ var Chart = {};
 
 			// Merge old and new data
 			_.each(data, function (chart) {
-				scope.data.push(chart);
-			});
+				var c = _.findWhere(scope.data, {
+					id: chart.id
+				});
+				
+				if (c) {
+					throw Error('Chart with id ' +
+						chart.id + ' already exists!');
+				}
 
-			// Update scales/axes
-			AxisChart.prototype.update.apply(this, arguments);
+				scope.data.push({
+					id: chart.id,
+					color: chart.color,
+					data: []
+				});
+			});
 
 			// bind updated data
 			scope.paths = scope.clip
@@ -477,14 +405,6 @@ var Chart = {};
 				.data(scope.data, function (chart) {
 					return chart.id;
 				});
-
-			// update
-			scope.paths
-				.transition()
-				.duration(scope.duration)
-					.attr('d', function (chart) {
-						return scope.line(chart.data);
-					});
 
 			// enter
 			scope.paths
@@ -494,28 +414,11 @@ var Chart = {};
 				.attr('id', function (chart) {
 					return chart.id;
 				})
-				.style('stroke-opacity', 0)
 				.style('stroke', function (chart) {
-					return scope.colors(chart.id);
-				})
-				.attr('d', function (chart) {
-					var data = chart.data.map(function (point) {
-						var obj = {};
-						obj[scope.x.key] = point[scope.x.key];
-						obj[scope.y.key] = 0;
-						return obj;
-					});
+					return chart.color || scope.colors(chart.id);
+				});
 
-					return scope.line(data);
-				})
-				.transition()
-				.duration(scope.duration)
-					.attr('d', function (chart) {
-						return scope.line(chart.data);
-					})
-					.style('stroke-opacity', 1);
-
-			return scope;
+			return scope.update(data);
 		},
 
 		/*
@@ -573,6 +476,91 @@ var Chart = {};
 
 						return scope.line(data);
 					})
+					.remove();
+		},
+
+		/*
+		 * TODO comment
+		 */
+		formatData: function (newData) {
+			var scope = this;
+
+			var copy,
+				first,
+				last;
+
+			copy = [];
+
+			_.each(scope.data, function (chart) {
+				var chartClone = {
+					id: chart.id,
+					data: []
+				};
+
+				var chartToMerge = _.findWhere(newData, {
+					id: chart.id
+				});
+
+				// Create deep copy of chart.data
+				_.each(chart.data, function (point) {
+					chartClone.data.push(_.clone(point));
+				});
+
+				// Merge old and new data
+				if (chartToMerge && chartToMerge.data.length) {
+					_.each(chartToMerge.data, function (point) {
+						chartClone.data.push(point);
+						chart.data.push(point);
+					});
+				}
+
+				copy.push(chartClone);
+			});
+
+			return copy;
+		},
+
+		/*
+		 * TODO comment
+		 */
+		resize: function () {
+			var scope = this;
+
+			scope.resizeId = setInterval(function () {
+				var width = scope.container.node()
+					.getBoundingClientRect().width;
+
+				if (scope.contWidth != width) {
+					scope.contWidth = width;
+
+					AxisChart.prototype.resize.apply(scope, arguments);
+
+					scope.canvas
+						.select('#clip rect')
+						.attr('width', scope.width);
+
+					scope.paths
+						.attr('d', function (chart) {
+							return scope.line(chart.data);
+						});
+				}
+			}, 30);
+		},
+
+		/*
+		 * TODO comment
+		 */
+		destroy: function () {
+			var scope = this;
+			var svg = scope.canvas.node().parentNode;
+
+			clearInterval(scope.resizeId);
+
+			d3.select(svg)
+				.transition()
+				.duration(scope.duration)
+					.attr('height', 0)
+					.style('opacity', 0)
 					.remove();
 		}
 	});
