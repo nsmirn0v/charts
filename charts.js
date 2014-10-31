@@ -198,6 +198,9 @@ var Chart = {};
 				.attr('transform', 'translate(' + [0, scope.height] + ')')
 				.call(scope.xAxis);
 
+			// Update legend
+			scope.updateLegend();
+
 			return scope;
 		},
 
@@ -289,22 +292,84 @@ var Chart = {};
 			if (!scope.legend) {
 				scope.legend = scope.svg
 					.append('g')
-					.classed('legend', true)
-					.attr('transfrom', 'translate(' +
-						[ scope.height + scope.margin.top] + ')');
+					.classed('legend', true);
 			}
 
 			scope.legend
+				.attr('transform', 'translate(' +
+					[(scope.margin.left + scope.width) / 2,
+					scope.height + scope.margin.top + 20] + ')');
+
+			var lItems = scope.legend
 				.selectAll('.l-item')
 				.data(scope.data, function (chart) {
 					return chart.id;
 				});
 
 			// enter
+			lItems
+				.enter()
+				.append('g')
+				.classed('l-item', true)
+				.each(function (d, i) {
+					var group,
+						siblings,
+						offset;
+
+					siblings = this.parentNode.childNodes;
+					offset = 0;
+
+					for (var j = 0; j < i; j++) {
+						offset += siblings[j].getBBox().width + 5;
+					}
+
+					group = d3.select(this)
+						.style('opacity', 0);
+
+					group.append('rect')
+						.attr('width', 10)
+						.attr('height', 10)
+						.attr('rx', 2)
+						.style('fill', d.color || scope.colors(d.id));
+
+					group.append('text')
+						.attr('x', 12)
+						.attr('dy', '.8em')
+						.text(d.id);
+
+					group
+						.transition()
+						.duration(100)
+							.style('opacity', 1)
+							.attr('transform',
+								'translate(' + [offset, 0] + ')');
+				});
 
 			// update
+			lItems
+				.each(function (d, i) {
+					var siblings,
+						offset;
+
+					siblings = this.parentNode.childNodes;
+					offset = 0;
+
+					for (var j = 0; j < i; j++) {
+						offset += siblings[j].getBBox().width + 5;
+					}
+
+					d3.select(this)
+						.transition()
+						.duration(100)
+							.style('opacity', 1)
+							.attr('transform',
+								'translate(' + [offset, 0] + ')');
+				});
 
 			// exit
+			lItems
+				.exit()
+				.remove();
 		}
 	});
 
@@ -476,6 +541,9 @@ var Chart = {};
 					return chart.color || scope.colors(chart.id);
 				});
 
+			// Update legend
+			scope.updateLegend();
+
 			// Update tooltip
 			if (scope.tPoints && scope.mousePos) {
 				scope.mousemove(scope.mousePos, true);
@@ -540,6 +608,9 @@ var Chart = {};
 						return scope.line(data);
 					})
 					.remove();
+
+			// Update legend
+			scope.updateLegend();
 
 			// Update tooltip
 			if (scope.tPoints && scope.mousePos) {
@@ -696,19 +767,19 @@ var Chart = {};
 			// enter
 			circles
 				.enter()
-					.append('circle')
-					.classed('t-circle', true)
-					.attr('r', 4)
-					.attr('cx', function (d) {
-						return scope.xScale(d.point[scope.x.key]);
-					})
-					.attr('cy', function (d) {
-						return scope.yScale(d.point[scope.y.key]);
-					})
-					.style('fill', function (d) {
-						return d.color;
-					})
-					.style('stroke', 'white');
+				.append('circle')
+				.classed('t-circle', true)
+				.attr('r', 4)
+				.attr('cx', function (d) {
+					return scope.xScale(d.point[scope.x.key]);
+				})
+				.attr('cy', function (d) {
+					return scope.yScale(d.point[scope.y.key]);
+				})
+				.style('fill', function (d) {
+					return d.color;
+				})
+				.style('stroke', 'white');
 
 			// update
 			circles
