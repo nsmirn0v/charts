@@ -102,6 +102,15 @@ var Chart = {};
 				.attr('y', scope.margin.top / 2)
 				.style('text-anchor', 'middle');
 
+			// Append tooltip values container
+			scope.tValuesGroup = scope.canvas
+				.append('g')
+				.classed('t-values', true)
+				.attr('transform', 'translate(' + [20, 0] + ')');
+
+			// Create chart legend
+			scope.updateLegend();
+
 			// Init scales
 			scope.xScale = scope.scale(scope.x, true);
 			scope.yScale = scope.scale(scope.y);
@@ -272,6 +281,30 @@ var Chart = {};
 			} else {
 				throw Error('Invalid axis type', options.type);
 			}
+		},
+
+		updateLegend: function () {
+			var scope = this;
+
+			if (!scope.legend) {
+				scope.legend = scope.svg
+					.append('g')
+					.classed('legend', true)
+					.attr('transfrom', 'translate(' +
+						[ scope.height + scope.margin.top] + ')');
+			}
+
+			scope.legend
+				.selectAll('.l-item')
+				.data(scope.data, function (chart) {
+					return chart.id;
+				});
+
+			// enter
+
+			// update
+
+			// exit
 		}
 	});
 
@@ -301,12 +334,6 @@ var Chart = {};
 				.data(scope.data, function (d) {
 					return d.id;
 				});
-
-			// append tooltip values container
-			scope.tValuesGroup = scope.canvas
-				.append('g')
-				.classed('t-values', true)
-				.attr('transform', 'translate(' + [20, 0] + ')');
 
 			// enter
 			scope.paths
@@ -449,6 +476,11 @@ var Chart = {};
 					return chart.color || scope.colors(chart.id);
 				});
 
+			// Update tooltip
+			if (scope.tPoints && scope.mousePos) {
+				scope.mousemove(scope.mousePos, true);
+			}
+
 			return scope.update(data);
 		},
 
@@ -508,6 +540,11 @@ var Chart = {};
 						return scope.line(data);
 					})
 					.remove();
+
+			// Update tooltip
+			if (scope.tPoints && scope.mousePos) {
+				scope.mousemove(scope.mousePos, true);
+			}
 		},
 
 		/*
@@ -691,7 +728,7 @@ var Chart = {};
 
 			// render values
 			var tValues = scope.tValuesGroup
-				.selectAll('.t-value')
+				.selectAll('.t-item')
 				.data(scope.tPoints, function (d) {
 					return d.color;
 				});
@@ -700,7 +737,7 @@ var Chart = {};
 			tValues
 				.enter()
 					.append('g')
-					.classed('t-value', true)
+					.classed('t-item', true)
 					.each(function (d, i) {
 						var group,
 							siblings,
@@ -783,7 +820,7 @@ var Chart = {};
 				.remove();
 
 			scope.tValuesGroup
-				.selectAll('.t-value')
+				.selectAll('.t-item')
 				.remove();
 		}
 	});
