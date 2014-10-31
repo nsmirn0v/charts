@@ -302,6 +302,12 @@ var Chart = {};
 					return d.id;
 				});
 
+			// append tooltip values container
+			scope.tValuesGroup = scope.canvas
+				.append('g')
+				.classed('t-values', true)
+				.attr('transform', 'translate(' + [20, 0] + ')');
+
 			// enter
 			scope.paths
 				.enter()
@@ -384,7 +390,7 @@ var Chart = {};
 
 			// Update tooltip
 			if (scope.tPoints && scope.mousePos) {
-				scope.mousemove(scope.mousePos);
+				scope.mousemove(scope.mousePos, true);
 			}
 
 			return scope;
@@ -608,7 +614,7 @@ var Chart = {};
 		/*
 		 * TODO comment
 		 */
-		mousemove: function (mouse) {
+		mousemove: function (mouse, animate) {
 			var scope = this;
 			var x = scope.xScale.invert(mouse[0]);
 
@@ -669,15 +675,96 @@ var Chart = {};
 
 			// update
 			circles
-				.attr('cx', function (d) {
-					return scope.xScale(d.point[scope.x.key]);
-				})
-				.attr('cy', function (d) {
-					return scope.yScale(d.point[scope.y.key]);
-				});
+				.transition()
+				.duration(animate ? scope.duration : 0)
+					.attr('cx', function (d) {
+						return scope.xScale(d.point[scope.x.key]);
+					})
+					.attr('cy', function (d) {
+						return scope.yScale(d.point[scope.y.key]);
+					});
 
 			// exit
 			circles
+				.exit()
+				.remove();
+
+			// render values
+			var tValues = scope.tValuesGroup
+				.selectAll('.t-value')
+				.data(scope.tPoints, function (d) {
+					return d.color;
+				});
+
+			// enter
+			tValues
+				.enter()
+					.append('g')
+					.classed('t-value', true)
+					.each(function (d, i) {
+						var group,
+							siblings,
+							offset;
+
+						siblings = this.parentNode.childNodes;
+						offset = 0;
+
+						for (var j = 0; j < i; j++) {
+							offset += siblings[j].getBBox().width + 5;
+						}
+
+						group = d3.select(this)
+							.style('opacity', 0);
+
+						group.append('rect')
+							.attr('width', 10)
+							.attr('height', 10)
+							.attr('rx', 2)
+							.style('fill', d.color);
+
+						group.append('text')
+							.attr('x', 12)
+							.attr('dy', '.8em')
+							.text(d3.round(d.point[scope.y.key], 2));
+
+						group
+							.transition()
+							.duration(100)
+								.style('opacity', 1)
+								.attr('transform',
+									'translate(' + [offset, 0] + ')');
+					});
+
+			// update
+			tValues
+				.each(function (d, i) {
+					var group,
+						siblings,
+						offset;
+
+					siblings = this.parentNode.childNodes;
+					offset = 0;
+
+					for (var j = 0; j < i; j++) {
+						offset += siblings[j].getBBox().width + 10;
+					}
+
+					group = d3.select(this);
+
+					group
+						.select('text')
+						.text(d3.round(d.point[scope.y.key], 2));
+
+					group
+						.transition()
+						.duration(100)
+							.style('opacity', 1)
+							.attr('transform',
+								'translate(' + [offset, 0] + ')');
+				});
+
+			// exit
+			tValues
 				.exit()
 				.remove();
 		},
@@ -693,6 +780,10 @@ var Chart = {};
 
 			scope.clip
 				.selectAll('.t-circle')
+				.remove();
+
+			scope.tValuesGroup
+				.selectAll('.t-value')
 				.remove();
 		}
 	});
