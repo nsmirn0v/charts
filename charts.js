@@ -46,6 +46,11 @@ var Chart = {};
 
 		scope.data = options.data || [];
 
+		// bisector for tooltip
+		scope.bisector = d3.bisector(function (d) {
+			return d[scope.x.key];
+		}).left;
+
 		// Init color picker
 		scope.colors = d3.scale.category10();
 
@@ -63,15 +68,20 @@ var Chart = {};
 		render: function () {
 			var scope = this;
 
-			// Render main canvas
-			scope.canvas = d3.select(scope.container.node())
+			// create svg container
+			scope.svg = d3.select(scope.container.node())
 				.append('svg')
-				.attr('width', scope.width + scope.margin.left + scope.margin.right)
-				.attr('height', scope.height + scope.margin.top + scope.margin.bottom)
-					.append('g')
-					.classed('canvas', true)
-					.attr('transform',
-						'translate(' + [scope.margin.left, scope.margin.top] + ')');
+				.attr('width', scope.width +
+					scope.margin.left + scope.margin.right)
+				.attr('height', scope.height +
+					scope.margin.top + scope.margin.bottom);
+
+			// Render main canvas
+			scope.canvas = scope.svg
+				.append('g')
+				.classed('canvas', true)
+				.attr('transform',
+					'translate(' + [scope.margin.left, scope.margin.top] + ')');
 
 			scope.canvas.append('defs')
 				.append('clipPath')
@@ -84,11 +94,12 @@ var Chart = {};
 					.on('mouseout', scope.mouseout);
 
 			// Render chart title
-			scope.canvas
+			scope.svg
 				.append('text')
 				.classed('chart-title', true)
 				.text(scope.title)
-				.attr('x', scope.width / 2)
+				.attr('x', scope.width / 2 + scope.margin.left)
+				.attr('y', scope.margin.top / 2)
 				.style('text-anchor', 'middle');
 
 			// Init scales
@@ -371,6 +382,11 @@ var Chart = {};
 						return scope.line(chart.data);
 					});
 
+			// Update tooltip
+			if (scope.tPoints && scope.mousePos) {
+				scope.mousemove(scope.mousePos);
+			}
+
 			return scope;
 		},
 
@@ -581,24 +597,103 @@ var Chart = {};
 				.attr('width', scope.width)
 				.attr('height', scope.height)
 				.style('fill', 'rgba(0,0,0,0.0001)')
-				.on('mousemove', scope.mousemove)
-				.on('mousemove', scope.mousemove)
-				.on('mouseout', scope.mouseout);
+				.on('mousemove', function () {
+					scope.mousemove(d3.mouse(this));
+				})
+				.on('mouseout', function () {
+					scope.mouseout();
+				});
 		},
 
 		/*
 		 * TODO comment
 		 */
-		mouseover: function () {
-			console.debug('mouseover');
-		},
+		mousemove: function (mouse) {
+			var scope = this;
+			var x = scope.xScale.invert(mouse[0]);
 
-		mousemove: function () {
-			console.debug('mousemove');
+			// save current mouse position
+			scope.mousePos = mouse;
+
+			// Init tooltip points array
+			scope.tPoints = [];
+
+			// Find points corresponding to
+			// current mouse position
+			_.each(scope.data, function (chart) {
+				var i,
+					p1,
+					p2,
+					p;
+
+				i = scope.bisector(chart.data, x, 1);
+
+				p1 = chart.data[i - 1];
+				p2 = chart.data[i];
+
+				if (p2) {
+					p = x - p1[scope.x.key] > p2[scope.x.key] - x ? p2 : p1;
+				} else {
+					p = p1;
+				}
+
+				scope.tPoints.push({
+					point: p,
+					color: chart.color || scope.colors(chart.id)
+				});
+			});
+
+			// render points
+			var circles = scope.clip
+				.selectAll('.t-circle')
+				.data(scope.tPoints, function (d) {
+					return d.color;
+				});
+
+			// enter
+			circles
+				.enter()
+					.append('circle')
+					.classed('t-circle', true)
+					.attr('r', 4)
+					.attr('cx', function (d) {
+						return scope.xScale(d.point[scope.x.key]);
+					})
+					.attr('cy', function (d) {
+						return scope.yScale(d.point[scope.y.key]);
+					})
+					.style('fill', function (d) {
+						return d.color;
+					})
+					.style('stroke', 'white');
+
+			// update
+			circles
+				.attr('cx', function (d) {
+					return scope.xScale(d.point[scope.x.key]);
+				})
+				.attr('cy', function (d) {
+					return scope.yScale(d.point[scope.y.key]);
+				});
+
+			// exit
+			circles
+				.exit()
+				.remove();
 		},
 
 		mouseout: function () {
-			console.debug('mouseout');
+			var scope = this;
+
+			// clear out mouse pos
+			scope.mousePos = null;
+
+			// clear out tooltip points
+			scope.tPoints = [];
+
+			scope.clip
+				.selectAll('.t-circle')
+				.remove();
 		}
 	});
 
