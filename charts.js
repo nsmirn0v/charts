@@ -78,7 +78,10 @@ var Chart = {};
 				.attr('id', 'clip')
 					.append('rect')
 					.attr('width', scope.width)
-					.attr('height', scope.height);
+					.attr('height', scope.height)
+					.on('mouseover', scope.mouseover)
+					.on('mousemove', scope.mousemove)
+					.on('mouseout', scope.mouseout);
 
 			// Render chart title
 			scope.canvas
@@ -159,6 +162,9 @@ var Chart = {};
 			return scope;
 		},
 
+		/*
+		 * TODO comment
+		 */
 		resize: function () {
 			var scope = this;
 
@@ -313,6 +319,9 @@ var Chart = {};
 						return scope.line(chart.data);
 					})
 					.style('stroke-opacity', 1);
+
+			// init mouse events
+			scope.mouse();
 
 			// subscribe to resize
 			scope.resize();
@@ -562,6 +571,34 @@ var Chart = {};
 					.attr('height', 0)
 					.style('opacity', 0)
 					.remove();
+		},
+
+		mouse: function () {
+			var scope = this;
+
+			this.hover = scope.canvas
+				.append('rect')
+				.attr('width', scope.width)
+				.attr('height', scope.height)
+				.style('fill', 'rgba(0,0,0,0.0001)')
+				.on('mousemove', scope.mousemove)
+				.on('mousemove', scope.mousemove)
+				.on('mouseout', scope.mouseout);
+		},
+
+		/*
+		 * TODO comment
+		 */
+		mouseover: function () {
+			console.debug('mouseover');
+		},
+
+		mousemove: function () {
+			console.debug('mousemove');
+		},
+
+		mouseout: function () {
+			console.debug('mouseout');
 		}
 	});
 
