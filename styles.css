@@ -19,7 +19,12 @@ svg {
 
 .line {
 	fill: none;
-	stroke-width: 2;
+	stroke-width: 1;
+}
+
+.area {
+	stroke: 0;
+	fill-opacity: 0.1;
 }
 
 .bar {

@@ -11,6 +11,9 @@ var Chart = {};
 
 	var SCALE_TYPES = ['linear', 'time', 'ordinal'];
 
+	/*
+	 * Main chart constructor
+	 */
 	var _Chart = function (options) {
 		var scope = this;
 
@@ -61,6 +64,10 @@ var Chart = {};
 		return scope;
 	};
 
+	/*
+	 * Chart with x, y axes inherit from this AxisChart
+	 * Defines/renders/updates exes
+	 */
 	var AxisChart = function (options) {
 		_Chart.apply(this, arguments);
 	};
@@ -391,7 +398,10 @@ var Chart = {};
 				.remove();
 		}
 	});
-
+	
+	/*
+	 * Line chart constructor
+	 */
 	var Line = function (options) {
 		AxisChart.apply(this, arguments);
 	};
@@ -448,6 +458,42 @@ var Chart = {};
 					})
 					.style('stroke-opacity', 1);
 
+			// Add area
+			if (scope.area) {
+				scope.areaPaths = scope.clip
+					.selectAll('.area')
+					.data(scope.data, function (d) {
+						return d.id;
+					});
+
+				// enter
+				scope.areaPaths
+					.enter()
+					.append('path')
+					.classed('area', true)
+					.attr('id', function (chart) {
+						return chart.id;
+					})
+					.style('fill', function (chart) {
+						return chart.color || scope.colors(chart.id);
+					})
+					.attr('d', function (chart) {
+						var data = chart.data.map(function (point) {
+							var obj = {};
+							obj[scope.x.key] = point[scope.x.key];
+							obj[scope.y.key] = 0;
+							return obj;
+						});
+
+						return scope.area(data);
+					})
+					.transition()
+					.duration(scope.duration)
+						.attr('d', function (chart) {
+							return scope.area(chart.data);
+						});
+			}
+
 			// init mouse events
 			scope.mouse();
 
@@ -487,6 +533,16 @@ var Chart = {};
 					return scope.line(chart.data);
 				});
 
+			if (scope.area) {
+				scope.areaPaths
+					.data(copy, function (chart) {
+						return chart.id;
+					})
+					.attr('d', function (chart) {
+						return scope.line(chart.data);
+					});
+			}
+
 			// Update scales/axes
 			AxisChart.prototype.update.apply(scope, arguments);
 
@@ -498,6 +554,15 @@ var Chart = {};
 					.attr('d', function (chart) {
 						return scope.line(chart.data);
 					});
+
+			if (scope.area) {
+				scope.areaPaths
+					.transition()
+					.duration(scope.duration)
+						.attr('d', function (chart) {
+							return scope.area(chart.data);
+						});
+			}
 
 			// Update tooltip
 			if (scope.tPoints && scope.mousePos) {
@@ -560,6 +625,25 @@ var Chart = {};
 					return chart.color || scope.colors(chart.id);
 				});
 
+			if (scope.area) {
+				scope.areaPaths = scope.clip
+					.selectAll('.area')
+					.data(scope.data, function (chart) {
+						return chart.id;
+					});
+
+				scope.areaPaths
+					.enter()
+					.append('path')
+					.classed('area', true)
+					.attr('id', function (chart) {
+						return chart.id;
+					})
+					.style('fill', function (chart) {
+						return chart.color || scope.colors(chart.id);
+					});
+			}
+
 			// Update legend
 			scope.updateLegend();
 
@@ -609,7 +693,7 @@ var Chart = {};
 						return scope.line(chart.data);
 					});
 
-			// update
+			// exit
 			scope.paths
 				.exit()
 				.transition()
@@ -627,6 +711,41 @@ var Chart = {};
 						return scope.line(data);
 					})
 					.remove();
+
+			if (scope.area) {
+				scope.areaPaths = scope.clip
+					.selectAll('.area')
+					.data(scope.data, function (chart) {
+						return chart.id;
+					});
+
+				// update
+				scope.areaPaths
+					.transition()
+					.duration(scope.duration)
+						.attr('d', function (chart) {
+							return scope.area(chart.data);
+						});
+
+				// exit
+				scope.areaPaths
+					.exit()
+					.transition()
+					.duration(scope.duration)
+						.style('fill-opacity', 0)
+						.attr('d', function (chart) {
+							var data = chart.data.map(function (point) {
+								var obj = {};
+								obj[scope.x.key] = point[scope.x.key];
+								obj[scope.y.key] = 0;
+
+								return obj;
+							});
+
+							return scope.area(data);
+						})
+						.remove();
+			}
 
 			// Update legend
 			scope.updateLegend();
@@ -701,6 +820,13 @@ var Chart = {};
 						.attr('d', function (chart) {
 							return scope.line(chart.data);
 						});
+
+					if (scope.area) {
+						scope.areaPaths
+							.attr('d', function (chart) {
+								return scope.area(chart.data);
+							});						
+					}
 				}
 			}, 30);
 		},
@@ -915,5 +1041,31 @@ var Chart = {};
 		}
 	});
 
+	/*
+	 * Area chart constructor
+	 */
+	var Area = function (options) {
+		var scope = this;
+
+		Line.apply(scope, arguments);
+
+		// Init area generator
+		scope.area = d3.svg.area()
+			.x(function (d) {
+				return scope.xScale(d[scope.x.key]);
+			})
+			.y0(function (d) {
+				return scope.yScale(0);
+			})
+			.y1(function (d) {
+				return scope.yScale(d[scope.y.key]);
+			});
+
+		return scope;
+	};
+
+	_.extend(Area.prototype, Line.prototype);
+
 	Chart.Line = Line;
+	Chart.Area = Area;
 })(Chart);
