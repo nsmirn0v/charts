@@ -207,6 +207,10 @@ var Chart = {};
 					scope.margin.left - scope.margin.right;
 			}
 
+			// update svg container
+			scope.svg
+				.attr('width', scope.contWidth);
+
 			scope.xScale
 				.range([0, scope.width]);
 
