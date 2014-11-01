@@ -30,6 +30,10 @@ var Chart = {};
 		scope.margin = options.margin || DEFAULTS.margin;
 
 		// Init dimensions
+		if (options.width) {
+			scope.maxWidth = options.width;
+		}
+
 		scope.width = (options.width || clientRect.width) -
 			scope.margin.left - scope.margin.right;
 
@@ -191,12 +195,27 @@ var Chart = {};
 			scope.width = scope.contWidth -
 				scope.margin.left - scope.margin.right;
 
+			if (scope.maxWidth && scope.width > scope.maxWidth) {
+				scope.width = scope.maxWidth -
+					scope.margin.left - scope.margin.right;
+			}
+
 			scope.xScale
 				.range([0, scope.width]);
 
 			scope.gxAxis
 				.attr('transform', 'translate(' + [0, scope.height] + ')')
 				.call(scope.xAxis);
+
+			// Update chart title possition
+			scope.svg
+				.select('.chart-title')
+				.attr('x', scope.width / 2 + scope.margin.left);
+
+			// Update x-label
+			scope.gxAxis
+				.select('.x-label')
+				.attr('x', scope.width);
 
 			// Update legend
 			scope.updateLegend();
