@@ -64,6 +64,23 @@ var Chart = {};
 		return scope;
 	};
 
+	_.extend(_Chart.prototype, {
+		/*
+		 * TODO comment
+		 */
+		isLineChart: function () {
+			return this.chartType === 'line';
+		},
+
+		isAreaChart: function () {
+			return this.chartType === 'area';
+		},
+
+		isScatterPlot: function () {
+			return this.chartType === 'scatter';
+		}
+	});
+
 	/*
 	 * Chart with x, y axes inherit from this AxisChart
 	 * Defines/renders/updates exes
@@ -72,7 +89,7 @@ var Chart = {};
 		_Chart.apply(this, arguments);
 	};
 
-	_.extend(AxisChart.prototype, {
+	_.extend(AxisChart.prototype, _Chart.prototype, {
 		/*
 		 * TODO: Render comment
 		 */
@@ -165,6 +182,10 @@ var Chart = {};
 				.attr('dy', '.71em')
 				.style('text-anchor', 'end')
 				.text(scope.y.label);
+
+			scope.clip = scope.canvas
+				.append('g')
+				.attr('clip-path', 'url(#clip)');
 
 			return scope;
 		},
@@ -350,7 +371,7 @@ var Chart = {};
 					offset = 0;
 
 					for (var j = 0; j < i; j++) {
-						offset += siblings[j].getBBox().width + 5;
+						offset += siblings[j].getBBox().width + 10;
 					}
 
 					group = d3.select(this)
@@ -385,7 +406,7 @@ var Chart = {};
 					offset = 0;
 
 					for (var j = 0; j < i; j++) {
-						offset += siblings[j].getBBox().width + 5;
+						offset += siblings[j].getBBox().width + 10;
 					}
 
 					d3.select(this)
@@ -408,6 +429,7 @@ var Chart = {};
 	 */
 	var Line = function (options) {
 		AxisChart.apply(this, arguments);
+		this.chartType = 'line';
 	};
 
 	_.extend(Line.prototype, AxisChart.prototype, {
@@ -419,51 +441,62 @@ var Chart = {};
 
 			AxisChart.prototype.render.apply(scope, arguments);
 
-			scope.line = d3.svg.line()
-				.x(function (d) { return scope.xScale(d[scope.x.key]); })
-				.y(function (d) { return scope.yScale(d[scope.y.key]); });
+			// Add line
+			if (scope.isLineChart() || scope.isAreaChart()) {
+				scope.line = d3.svg.line()
+					.x(function (d) { return scope.xScale(d[scope.x.key]); })
+					.y(function (d) { return scope.yScale(d[scope.y.key]); });
 
-			scope.clip = scope.canvas
-				.append('g')
-				.attr('clip-path', 'url(#clip)');
-
-			scope.paths = scope.clip
-				.selectAll('.line')
-				.data(scope.data, function (d) {
-					return d.id;
-				});
-
-			// enter
-			scope.paths
-				.enter()
-				.append('path')
-				.classed('line', true)
-				.attr('id', function (chart) {
-					return chart.id;
-				})
-				.style('stroke-opacity', 0)
-				.style('stroke', function (chart) {
-					return chart.color || scope.colors(chart.id);
-				})
-				.attr('d', function (chart) {
-					var data = chart.data.map(function (point) {
-						var obj = {};
-						obj[scope.x.key] = point[scope.x.key];
-						obj[scope.y.key] = 0;
-						return obj;
+				scope.paths = scope.clip
+					.selectAll('.line')
+					.data(scope.data, function (d) {
+						return d.id;
 					});
 
-					return scope.line(data);
-				})
-				.transition()
-				.duration(scope.duration)
-					.attr('d', function (chart) {
-						return scope.line(chart.data);
+				// enter
+				scope.paths
+					.enter()
+					.append('path')
+					.classed('line', true)
+					.attr('id', function (chart) {
+						return chart.id;
 					})
-					.style('stroke-opacity', 1);
+					.style('stroke-opacity', 0)
+					.style('stroke', function (chart) {
+						return chart.color || scope.colors(chart.id);
+					})
+					.attr('d', function (chart) {
+						var data = chart.data.map(function (point) {
+							var obj = {};
+							obj[scope.x.key] = point[scope.x.key];
+							obj[scope.y.key] = 0;
+							return obj;
+						});
+
+						return scope.line(data);
+					})
+					.transition()
+					.duration(scope.duration)
+						.attr('d', function (chart) {
+							return scope.line(chart.data);
+						})
+						.style('stroke-opacity', 1);
+			}
 
 			// Add area
-			if (scope.area) {
+			if (scope.isAreaChart()) {
+				// Init area generator
+				scope.area = d3.svg.area()
+					.x(function (d) {
+						return scope.xScale(d[scope.x.key]);
+					})
+					.y0(function (d) {
+						return scope.yScale(0);
+					})
+					.y1(function (d) {
+						return scope.yScale(d[scope.y.key]);
+					});
+
 				scope.areaPaths = scope.clip
 					.selectAll('.area')
 					.data(scope.data, function (d) {
@@ -498,6 +531,47 @@ var Chart = {};
 						});
 			}
 
+			if (scope.isScatterPlot()) {
+				scope.scatterGroups = scope.clip
+					.selectAll('.scatter')
+					.data(scope.data, function (chart) {
+						return chart.id;
+					});
+
+				scope.scatterGroups
+					.enter()
+					.append('g')
+					.classed('scatter', true)
+					.each(function (chart) {
+						var group = d3.select(this);
+
+						group
+							.selectAll('.s-circle')
+							.data(chart.data)
+							.enter()
+							.append('circle')
+							.classed('s-circle', true)
+							.attr('cx', function (point) {
+								return scope.xScale(point[scope.x.key]);
+							})
+							.attr('cy', function () {
+								return scope.yScale(0);
+							})
+							.attr('r', 0)
+							.style('fill',
+								chart.color || scope.colors(chart.id))
+							.style('opacity', 0)
+							.transition()
+							.duration(scope.duration)
+								.attr('cy', function (point) {
+									return scope.yScale(point[scope.y.key]);
+								})
+								.attr('r', 3)
+								.style('opacity', 1);
+					});
+
+			}
+
 			// init mouse events
 			scope.mouse();
 
@@ -513,8 +587,7 @@ var Chart = {};
 		update: function (newData) {
 			var scope = this;
 			
-			var copy,
-				makeCopy;
+			var dataCopy;
 
 			// If no data do nothing
 			if (!newData ||
@@ -526,20 +599,12 @@ var Chart = {};
 				newData = [newData];
 			}
 
-			copy = this.formatData(newData);
+			dataCopy = scope.formatData(newData);
 
-			// Render paths
-			scope.paths
-				.data(copy, function (chart) {
-					return chart.id;
-				})
-				.attr('d', function (chart) {
-					return scope.line(chart.data);
-				});
-
-			if (scope.area) {
-				scope.areaPaths
-					.data(copy, function (chart) {
+			if (scope.isLineChart() || scope.isAreaChart()) {
+				// Render paths
+				scope.paths
+					.data(dataCopy, function (chart) {
 						return chart.id;
 					})
 					.attr('d', function (chart) {
@@ -547,25 +612,99 @@ var Chart = {};
 					});
 			}
 
-			// Update scales/axes
-			AxisChart.prototype.update.apply(scope, arguments);
-
-			// Update path according to new
-			// scales and axes
-			scope.paths
-				.transition()
-				.duration(scope.duration)
+			if (scope.isAreaChart()) {
+				scope.areaPaths
+					.data(dataCopy, function (chart) {
+						return chart.id;
+					})
 					.attr('d', function (chart) {
 						return scope.line(chart.data);
 					});
+			}
 
-			if (scope.area) {
+			if (scope.isScatterPlot()) {
+				scope.scatterGroups
+					.data(dataCopy, function (chart) {
+						return chart.id;
+					})
+					.each(function (chart) {
+						var group = d3.select(this);
+						var circles;
+
+						circles = group
+							.selectAll('.s-circle')
+							.data(chart.data);
+
+						// enter
+						circles
+							.enter()
+							.append('circle')
+							.classed('s-circle', true)
+							.attr('cx', function (point) {
+								return scope.xScale(point[scope.x.key]);
+							})
+							.attr('cy', function (point) {
+								return scope.yScale(point[scope.y.key]);
+							})
+							.attr('r', 3)
+							.style('fill',
+								chart.color || scope.colors(chart.id));
+
+						// update
+						circles
+							.attr('cx', function (point) {
+								return scope.xScale(point[scope.x.key]);
+							})
+							.attr('cy', function (point) {
+								return scope.yScale(point[scope.y.key]);
+							});
+
+						// exit
+						circles
+							.exit()
+							.remove();
+					});
+			}
+
+			// Update scales/axes
+			AxisChart.prototype.update.apply(scope, arguments);
+
+			if (scope.isLineChart() || scope.isAreaChart()) {
+				// Update path according to new
+				// scales and axes
+				scope.paths
+					.transition()
+					.duration(scope.duration)
+						.attr('d', function (chart) {
+							return scope.line(chart.data);
+						});
+			}
+
+			if (scope.isAreaChart()) {
 				scope.areaPaths
 					.transition()
 					.duration(scope.duration)
 						.attr('d', function (chart) {
 							return scope.area(chart.data);
 						});
+			}
+
+			if (scope.isScatterPlot()) {
+				scope.scatterGroups
+					.each(function (chart) {
+						var group = d3.select(this);
+
+						group
+							.selectAll('.s-circle')
+							.transition()
+							.duration(scope.duration)
+								.attr('cx', function (point) {
+									return scope.xScale(point[scope.x.key]);
+								})
+								.attr('cy', function (point) {
+									return scope.yScale(point[scope.y.key]);
+								});
+					});
 			}
 
 			// Update tooltip
@@ -610,26 +749,28 @@ var Chart = {};
 				});
 			});
 
-			// bind updated data
-			scope.paths = scope.clip
-				.selectAll('.line')
-				.data(scope.data, function (chart) {
-					return chart.id;
-				});
+			if (scope.isLineChart() || scope.isAreaChart()) {
+				// bind updated data
+				scope.paths = scope.clip
+					.selectAll('.line')
+					.data(scope.data, function (chart) {
+						return chart.id;
+					});
 
-			// enter
-			scope.paths
-				.enter()
-				.append('path')
-				.classed('line', true)
-				.attr('id', function (chart) {
-					return chart.id;
-				})
-				.style('stroke', function (chart) {
-					return chart.color || scope.colors(chart.id);
-				});
+				// enter
+				scope.paths
+					.enter()
+					.append('path')
+					.classed('line', true)
+					.attr('id', function (chart) {
+						return chart.id;
+					})
+					.style('stroke', function (chart) {
+						return chart.color || scope.colors(chart.id);
+					});
+			}
 
-			if (scope.area) {
+			if (scope.isAreaChart()) {
 				scope.areaPaths = scope.clip
 					.selectAll('.area')
 					.data(scope.data, function (chart) {
@@ -646,6 +787,19 @@ var Chart = {};
 					.style('fill', function (chart) {
 						return chart.color || scope.colors(chart.id);
 					});
+			}
+
+			if (scope.isScatterPlot()) {
+				scope.scatterGroups = scope.clip
+					.selectAll('.scatter')
+					.data(scope.data, function (chart) {
+						return chart.id;
+					});
+
+				scope.scatterGroups
+					.enter()
+					.append('g')
+					.classed('scatter', true);
 			}
 
 			// Update legend
@@ -682,41 +836,43 @@ var Chart = {};
 			// Update scales/axis
 			AxisChart.prototype.update.apply(scope, arguments);
 
-			// Upate charts
-			scope.paths = scope.clip
-				.selectAll('.line')
-				.data(scope.data, function (chart) {
-					return chart.id;
-				});
-
-			// update
-			scope.paths
-				.transition()
-				.duration(scope.duration)
-					.attr('d', function (chart) {
-						return scope.line(chart.data);
+			if (scope.isLineChart() || scope.isAreaChart()) {
+				// Upate charts
+				scope.paths = scope.clip
+					.selectAll('.line')
+					.data(scope.data, function (chart) {
+						return chart.id;
 					});
 
-			// exit
-			scope.paths
-				.exit()
-				.transition()
-				.duration(scope.duration)
-					.style('stroke-opacity', 0)
-					.attr('d', function (chart) {
-						var data = chart.data.map(function (point) {
-							var obj = {};
-							obj[scope.x.key] = point[scope.x.key];
-							obj[scope.y.key] = 0;
-
-							return obj;
+				// update
+				scope.paths
+					.transition()
+					.duration(scope.duration)
+						.attr('d', function (chart) {
+							return scope.line(chart.data);
 						});
 
-						return scope.line(data);
-					})
-					.remove();
+				// exit
+				scope.paths
+					.exit()
+					.transition()
+					.duration(scope.duration)
+						.style('stroke-opacity', 0)
+						.attr('d', function (chart) {
+							var data = chart.data.map(function (point) {
+								var obj = {};
+								obj[scope.x.key] = point[scope.x.key];
+								obj[scope.y.key] = 0;
 
-			if (scope.area) {
+								return obj;
+							});
+
+							return scope.line(data);
+						})
+						.remove();
+			}
+
+			if (scope.isAreaChart()) {
 				scope.areaPaths = scope.clip
 					.selectAll('.area')
 					.data(scope.data, function (chart) {
@@ -751,6 +907,50 @@ var Chart = {};
 						.remove();
 			}
 
+			if (scope.isScatterPlot()) {
+				scope.scatterGroups = scope.clip
+					.selectAll('.scatter')
+					.data(scope.data, function (chart) {
+						return chart.id;
+					});
+
+				// update
+				scope.scatterGroups
+					.each(function (chart) {
+						d3.select(this)
+							.selectAll('.s-circle')
+							.transition()
+							.duration(scope.duration)
+								.attr('cx', function (point) {
+									return scope.xScale(point[scope.x.key]);
+								})
+								.attr('cy', function (point) {
+									return scope.yScale(point[scope.y.key]);
+								});
+					});
+
+				// exit
+				scope.scatterGroups
+					.exit()
+					.each(function (chart) {
+						d3.select(this)
+							.selectAll('.s-circle')
+							.transition()
+							.duration(scope.duration)
+								.attr('cy', function (point) {
+									return scope.yScale(0);
+								})
+								.style('opacity', 0)
+								.remove();
+					});
+
+				scope.scatterGroups
+					.exit()
+					.transition()
+					.delay(scope.duration)
+						.remove();
+			}
+
 			// Update legend
 			scope.updateLegend();
 
@@ -766,15 +966,16 @@ var Chart = {};
 		formatData: function (newData) {
 			var scope = this;
 
-			var copy,
+			var dataCopy,
 				first,
 				last;
 
-			copy = [];
+			dataCopy = [];
 
 			_.each(scope.data, function (chart) {
 				var chartClone = {
 					id: chart.id,
+					color: chart.color,
 					data: []
 				};
 
@@ -795,10 +996,10 @@ var Chart = {};
 					});
 				}
 
-				copy.push(chartClone);
+				dataCopy.push(chartClone);
 			});
 
-			return copy;
+			return dataCopy;
 		},
 
 		/*
@@ -956,44 +1157,8 @@ var Chart = {};
 			// enter
 			tValues
 				.enter()
-					.append('g')
-					.classed('t-item', true)
-					.each(function (d, i) {
-						var group,
-							siblings,
-							offset;
-
-						siblings = this.parentNode.childNodes;
-						offset = 0;
-
-						for (var j = 0; j < i; j++) {
-							offset += siblings[j].getBBox().width + 5;
-						}
-
-						group = d3.select(this)
-							.style('opacity', 0);
-
-						group.append('rect')
-							.attr('width', 10)
-							.attr('height', 10)
-							.attr('rx', 2)
-							.style('fill', d.color);
-
-						group.append('text')
-							.attr('x', 12)
-							.attr('dy', '.8em')
-							.text(d3.round(d.point[scope.y.key], 2));
-
-						group
-							.transition()
-							.duration(100)
-								.style('opacity', 1)
-								.attr('transform',
-									'translate(' + [offset, 0] + ')');
-					});
-
-			// update
-			tValues
+				.append('g')
+				.classed('t-item', true)
 				.each(function (d, i) {
 					var group,
 						siblings,
@@ -1003,13 +1168,21 @@ var Chart = {};
 					offset = 0;
 
 					for (var j = 0; j < i; j++) {
-						offset += siblings[j].getBBox().width + 10;
+						offset += siblings[j].getBBox().width + 5;
 					}
 
-					group = d3.select(this);
+					group = d3.select(this)
+						.style('opacity', 0);
 
-					group
-						.select('text')
+					group.append('rect')
+						.attr('width', 10)
+						.attr('height', 10)
+						.attr('rx', 2)
+						.style('fill', d.color);
+
+					group.append('text')
+						.attr('x', 12)
+						.attr('dy', '.8em')
 						.text(d3.round(d.point[scope.y.key], 2));
 
 					group
@@ -1019,6 +1192,33 @@ var Chart = {};
 							.attr('transform',
 								'translate(' + [offset, 0] + ')');
 				});
+
+			// update
+			tValues.each(function (d, i) {
+				var group,
+					siblings,
+					offset;
+
+				siblings = this.parentNode.childNodes;
+				offset = 0;
+
+				for (var j = 0; j < i; j++) {
+					offset += siblings[j].getBBox().width + 10;
+				}
+
+				group = d3.select(this);
+
+				group
+					.select('text')
+					.text(d3.round(d.point[scope.y.key], 2));
+
+				group
+					.transition()
+					.duration(100)
+						.style('opacity', 1)
+						.attr('transform',
+							'translate(' + [offset, 0] + ')');
+			});
 
 			// exit
 			tValues
@@ -1049,27 +1249,23 @@ var Chart = {};
 	 * Area chart constructor
 	 */
 	var Area = function (options) {
-		var scope = this;
-
-		Line.apply(scope, arguments);
-
-		// Init area generator
-		scope.area = d3.svg.area()
-			.x(function (d) {
-				return scope.xScale(d[scope.x.key]);
-			})
-			.y0(function (d) {
-				return scope.yScale(0);
-			})
-			.y1(function (d) {
-				return scope.yScale(d[scope.y.key]);
-			});
-
-		return scope;
+		Line.apply(this, arguments);
+		this.chartType = 'area';
 	};
 
 	_.extend(Area.prototype, Line.prototype);
 
+	/*
+	 * Scatter plot chart constructor
+	 */
+	var Scatter = function (options) {
+		Line.apply(this, arguments);
+		this.chartType = 'scatter';
+	};
+
+	_.extend(Scatter.prototype, Line.prototype);
+
 	Chart.Line = Line;
 	Chart.Area = Area;
+	Chart.Scatter = Scatter;
 })(Chart);
