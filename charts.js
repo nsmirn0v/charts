@@ -230,7 +230,8 @@ var Chart = {};
 
 			// update svg container
 			scope.svg
-				.attr('width', scope.contWidth);
+				.attr('width', scope.width +
+					scope.margin.left + scope.margin.right);
 
 			scope.xScale
 				.range([0, scope.width]);
@@ -1021,16 +1022,31 @@ var Chart = {};
 						.select('#clip rect')
 						.attr('width', scope.width);
 
-					scope.paths
-						.attr('d', function (chart) {
-							return scope.line(chart.data);
-						});
+					if (scope.isLineChart() || scope.isAreaChart()) {
+						scope.paths
+							.attr('d', function (chart) {
+								return scope.line(chart.data);
+							});
+					}
 
-					if (scope.area) {
+					if (scope.isAreaChart()) {
 						scope.areaPaths
 							.attr('d', function (chart) {
 								return scope.area(chart.data);
-							});						
+							});
+					}
+
+					if (scope.isScatterPlot()) {
+						scope.scatterGroups.each(function (chart) {
+							d3.select(this)
+								.selectAll('.s-circle')
+								.attr('cx', function (point) {
+									return scope.xScale(point[scope.x.key]);
+								})
+								.attr('cy', function (point) {
+									return scope.yScale(point[scope.y.key]);
+								});
+						});
 					}
 				}
 			}, 30);
