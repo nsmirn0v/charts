@@ -5,7 +5,7 @@ var Chart = {};
 
 (function (Chart) {
 	var DEFAULTS = {
-		margin: { top: 20, bottom: 20, left: 30, right: 20 },
+		margin: { top: 20, bottom: 30, left: 30, right: 20 },
 		duration: 500
 	};
 
@@ -78,6 +78,10 @@ var Chart = {};
 
 		isScatterPlot: function () {
 			return this.chartType === 'scatter';
+		},
+
+		isBarChart: function () {
+			return this.chartType === 'bar';
 		}
 	});
 
@@ -149,6 +153,13 @@ var Chart = {};
 				.ticks(5)
 				.scale(scope.xScale);
 
+			if (scope.isBarChart()) {
+				scope.xAxis
+					.tickFormat(function (time) {
+						return scope.x.tick.format(time);
+					});
+			}
+
 			scope.yAxis = d3.svg.axis()
 				.orient('left')
 				.ticks(5)
@@ -160,6 +171,14 @@ var Chart = {};
 				.classed('axis x', true)
 				.attr('transform', 'translate(' + [0, scope.height] +')')
 				.call(scope.xAxis);
+
+			if (scope.isBarChart()) {
+				scope.gxAxis
+					.selectAll('text')
+					.attr('transform', 'rotate(' + scope.x.tick.rotate + ')')
+					.style('text-anchor', scope.x.tick.rotate ? 'end' : 'middle')
+					.style('dy', scope.x.tick.rotate ? '0' : '-5px');
+			}
 
 			scope.gxAxis
 				.append('text')
@@ -262,42 +281,27 @@ var Chart = {};
 		scale: function (options, x) {
 			var scope = this;
 			var range = x ? [0, scope.width] : [scope.height - 1, 0];
-			
-			var scale;
 
-			switch(SCALE_TYPES.indexOf(options.type)) {
-				case 0:
-					// linear
-					scale = d3.scale.linear()
-						.domain(scope.domain(options))
-						.range(range);
-					break;
-				case 1:
-					// time
-					scale = d3.time.scale()
-						.domain(scope.domain(options))
-						.range(range);
-					break;
-				case 2:
-					// ordinal
-					scale = d3.scale.ordinal()
-						.domain(scope.domain(options))
-						.rangeRoundBands(range, 0.1);
-					break;
-				default:
-					// throw error otherwise
-					throw Error('Invalid axis type', options.type);
+			if (scope.isBarChart() && x) {
+				return d3.scale.ordinal()
+					.domain(scope.domain(options, x))
+					.rangeRoundBands(range, 0.08);
+			} else if (options.type === 'time') {
+				return d3.time.scale()
+					.domain(scope.domain(options, x))
+					.range(range);
+			} else {
+				return d3.scale.linear()
+					.domain(scope.domain(options))
+					.range(range);
 			}
-
-			return scale;
 		},
 
 		/*
 		 * TODO comment
 		 */
-		domain: function (options) {
+		domain: function (options, x) {
 			var scope = this;
-			// var keys = _.keys(scope.data);
 
 			var min,
 				max,
@@ -308,7 +312,10 @@ var Chart = {};
 					[new Date(), new Date()] : [0, 1];
 			}
 
-			if (options.type === 'time' || options.type === 'linear') {
+			if (scope.isLineChart() ||
+				scope.isAreaChart() ||
+				scope.isScatterPlot() ||
+				(scope.isBarChart() && !x)) {
 				_.each(scope.data, function (chart) {
 					var extent = d3.extent(chart.data, function (d) {
 						return d[options.key];
@@ -333,6 +340,16 @@ var Chart = {};
 				}
 
 				return [min, max];
+			} else if (scope.isBarChart()) {
+				domain = [];
+
+				_.each(scope.data, function (chart) {
+					domain = _.union(domain, chart.data.map(function (point) {
+						return point[options.key];
+					}));
+				});
+
+				return domain;
 			} else {
 				throw Error('Invalid axis type', options.type);
 			}
@@ -422,6 +439,48 @@ var Chart = {};
 			lItems
 				.exit()
 				.remove();
+		},
+
+		/*
+		 * TODO comment
+		 */
+		formatData: function (newData) {
+			var scope = this;
+
+			var dataCopy,
+				first,
+				last;
+
+			dataCopy = [];
+
+			_.each(scope.data, function (chart) {
+				var chartClone = {
+					id: chart.id,
+					color: chart.color,
+					data: []
+				};
+
+				var chartToMerge = _.findWhere(newData, {
+					id: chart.id
+				});
+
+				// Create deep copy of chart.data
+				_.each(chart.data, function (point) {
+					chartClone.data.push(_.clone(point));
+				});
+
+				// Merge old and new data
+				if (chartToMerge && chartToMerge.data.length) {
+					_.each(chartToMerge.data, function (point) {
+						chartClone.data.push(point);
+						chart.data.push(point);
+					});
+				}
+
+				dataCopy.push(chartClone);
+			});
+
+			return dataCopy;
 		}
 	});
 	
@@ -964,48 +1023,6 @@ var Chart = {};
 		/*
 		 * TODO comment
 		 */
-		formatData: function (newData) {
-			var scope = this;
-
-			var dataCopy,
-				first,
-				last;
-
-			dataCopy = [];
-
-			_.each(scope.data, function (chart) {
-				var chartClone = {
-					id: chart.id,
-					color: chart.color,
-					data: []
-				};
-
-				var chartToMerge = _.findWhere(newData, {
-					id: chart.id
-				});
-
-				// Create deep copy of chart.data
-				_.each(chart.data, function (point) {
-					chartClone.data.push(_.clone(point));
-				});
-
-				// Merge old and new data
-				if (chartToMerge && chartToMerge.data.length) {
-					_.each(chartToMerge.data, function (point) {
-						chartClone.data.push(point);
-						chart.data.push(point);
-					});
-				}
-
-				dataCopy.push(chartClone);
-			});
-
-			return dataCopy;
-		},
-
-		/*
-		 * TODO comment
-		 */
 		resize: function () {
 			var scope = this;
 
@@ -1281,7 +1298,186 @@ var Chart = {};
 
 	_.extend(Scatter.prototype, Line.prototype);
 
+	var Bar = function (options) {
+		AxisChart.apply(this, arguments);
+		this.chartType = 'bar';
+	};
+
+	_.extend(Bar.prototype, AxisChart.prototype, {
+		/*
+		 * TODO comment
+		 */
+		render: function () {
+			var scope = this;
+
+			AxisChart.prototype.render.apply(scope, arguments);
+
+			scope.barGroups = scope.clip
+				.selectAll('.bars')
+				.data(scope.data, function (chart) {
+					return chart.id;
+				})
+				.enter()
+				.append('g')
+				.classed('bars', true);
+
+			scope.barGroups.each(function (chart, i) {
+				d3.select(this)
+					.selectAll('.bar')
+					.data(chart.data)
+					.enter()
+					.append('rect')
+						.classed('bar', true)
+						.attr('x', function (p) {
+							return scope.xScale(p[scope.x.key]) +
+								scope.xScale.rangeBand() / scope.data.length * i;
+						})
+						.attr('y', scope.height)
+						.attr('height', 0)
+						.attr('width', scope.xScale.rangeBand() / scope.data.length)
+						.attr('rx', 1)
+						.style('fill', chart.color || scope.colors(chart.id))
+						.style('fill-opacity', 0)
+							.transition()
+							.duration(scope.duration)
+								.attr('y', function (p) {
+									return scope.yScale(p[scope.y.key]);
+								})
+								.attr('height', function (p) {
+									return scope.height - scope.yScale(p[scope.y.key]);
+								})
+								.style('fill-opacity', 1);
+			});
+
+			// init mouse events
+			// scope.mouse();
+
+			// subscribe to resize
+			// scope.resize();
+
+			return scope;
+		},
+
+		/*
+		 * TODO comment
+		 */
+		update: function (newData) {
+			var scope = this;
+			
+			var dataCopy;
+
+			// If no data do nothing
+			if (!newData ||
+				(_.isArray(newData) && !newData.length)) {
+				return;
+			}
+
+			if (!newData.length) {
+				newData = [newData];
+			}
+
+			dataCopy = scope.formatData(newData);
+
+			scope.barGroups
+				.data(dataCopy, function (chart) {
+					return chart.id;
+				})
+				.each(function (chart, i) {
+					var rect = d3.select(this)
+						.selectAll('.bar')
+						.data(chart.data);
+				});
+
+			// Update scales/axes
+			AxisChart.prototype.update.apply(scope, arguments);
+
+			// Update bars according to new
+			// scales and axes
+			scope.barGroups
+				.data(dataCopy, function (chart) {
+					return chart.id;
+				})
+				.each(function (chart, i) {
+					var rect = d3.select(this)
+						.selectAll('.bar')
+						.data(chart.data);
+
+					// update
+					rect
+						.transition()
+						.duration(scope.duration)
+							.attr('x', function (p) {
+								return scope.xScale(p[scope.x.key]) +
+									scope.xScale.rangeBand() /
+									scope.data.length * i;
+							})
+							.attr('y', function (p) {
+								return scope.yScale(p[scope.y.key]);
+							})
+							.attr('height', function (p) {
+								return scope.height -
+									scope.yScale(p[scope.y.key]);
+							})
+							.attr('width',
+								scope.xScale.rangeBand() /
+								scope.data.length);
+
+					// enter
+					rect
+						.enter()
+						.append('rect')
+							.classed('bar', true)
+							.attr('x', function (p) {
+								return scope.xScale(p[scope.x.key]) +
+									scope.xScale.rangeBand() / scope.data.length * i;
+							})
+							.attr('y', scope.height)
+							.attr('height', scope.yScale(0))
+							.attr('width', scope.xScale.rangeBand() / scope.data.length)
+							.attr('rx', 1)
+							.style('fill', chart.color || scope.colors(chart.id))
+							.style('fill-opacity', 0)
+								.transition()
+								.duration(scope.duration)
+									.attr('y', function (p) {
+										return scope.yScale(p[scope.y.key]);
+									})
+									.attr('height', function (p) {
+										return scope.height - scope.yScale(p[scope.y.key]);
+									})
+									.style('fill-opacity', 1);
+
+					// exit
+					rect
+						.exit()
+						.remove();
+				});
+		},
+
+		/*
+		 * TODO comment
+		 */
+		add: function () {
+			
+		},
+
+		/*
+		 * TODO comment
+		 */
+		remove: function () {
+			
+		},
+
+		/*
+		 * TODO comment
+		 */
+		destroy: function () {
+			
+		}
+	});
+
 	Chart.Line = Line;
 	Chart.Area = Area;
 	Chart.Scatter = Scatter;
+	Chart.Bar = Bar;
 })(Chart);

@@ -23,7 +23,7 @@ svg {
 }
 
 .area {
-	stroke: 0;
+	stroke: none;
 	fill-opacity: 0.1;
 }
 
