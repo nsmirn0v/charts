@@ -6,8 +6,9 @@ body {
 }
 
 svg {
-	display: block;
-	margin: 20px auto;
+	/*display: block;
+	margin: 20px auto;*/
+	margin: 20px 0;
 }
 
 .axis line,

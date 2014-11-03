@@ -280,7 +280,7 @@ var Chart = {};
 		 */
 		scale: function (options, x) {
 			var scope = this;
-			var range = x ? [0, scope.width] : [scope.height - 1, 0];
+			var range = x ? [4, scope.width - 4] : [scope.height - 1, 0];
 
 			if (scope.isBarChart() && x) {
 				return d3.scale.ordinal()
